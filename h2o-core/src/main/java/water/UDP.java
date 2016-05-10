@@ -39,8 +39,10 @@ public abstract class UDP {
     // We'll hang on to these packets; filter out dup sends and auto-reply
     // identical result ACK packets.
     exec(false,new RPC.RemoteHandler(),H2O.DESERIAL_PRIORITY), // Remote hi-q execution request
-    i_o (false,new UDP.IO_record(),(byte)-1); // Only used to profile I/O
-    
+    i_o (false,new UDP.IO_record(),(byte)-1), // Only used to profile I/O
+    external_frame(false, new ExternalFrameHandler.Adder(), H2O.MAX_PRIORITY); // for adding rows to non-finalized frame from
+    //external environment such as Spark executors
+
     final UDP _udp;           // The Callable S.A.M. instance
     final byte _prior;        // Priority
     final boolean _paxos;     // Ignore (or not) packets from outside the Cloud
