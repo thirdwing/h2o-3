@@ -121,9 +121,11 @@ public class PersistManager {
     }
 
     try {
-      I[Value.S3  ] = new PersistS3();
+      Class klass = Class.forName("water.persist.PersistS3");
+      java.lang.reflect.Constructor constructor = klass.getConstructor();
+      I[Value.HDFS] = (Persist) constructor.newInstance();
       Log.info("S3 subsystem successfully initialized");
-    } catch (NoClassDefFoundError ignore) {
+    } catch (Throwable ignore) {
       Log.info("S3 subsystem not available");
     }
   }
