@@ -142,6 +142,7 @@ public final class PersistS3 extends Persist {
       currentList = s3.listNextBatchOfObjects(currentList);
       processListing(currentList, files, fails);
     }
+    keys.addAll(files);
     // write barrier was here : DKV.write_barrier();
   }
 
@@ -257,7 +258,7 @@ public final class PersistS3 extends Persist {
     return new String[] { bucket, key };
   }
   private static String[] decodeKeyImpl(Key k) {
-    String s = new String((k._kb[0] == Key.VEC)?Arrays.copyOfRange(k._kb, Vec.KEY_PREFIX_LEN, k._kb.length):k._kb);
+    String s = new String((k._kb[0] == Key.CHK)?Arrays.copyOfRange(k._kb, Vec.KEY_PREFIX_LEN, k._kb.length):k._kb);
     return decodePath(s);
   }
 

@@ -8,7 +8,7 @@ import water.*;
 public class S3FileVec extends FileVec {
 
   private S3FileVec(Key key, long len) {
-    super(key, len, Value.HDFS);
+    super(key, len, Value.S3);
   }
 
   public static Key make(String path, long size) {

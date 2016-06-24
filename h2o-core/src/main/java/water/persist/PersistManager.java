@@ -123,7 +123,7 @@ public class PersistManager {
     try {
       Class klass = Class.forName("water.persist.PersistS3");
       java.lang.reflect.Constructor constructor = klass.getConstructor();
-      I[Value.HDFS] = (Persist) constructor.newInstance();
+      I[Value.S3] = (Persist) constructor.newInstance();
       Log.info("S3 subsystem successfully initialized");
     } catch (Throwable ignore) {
       Log.info("S3 subsystem not available");
@@ -256,12 +256,16 @@ public class PersistManager {
       return;
     }
 
-    if( s.startsWith("hdfs:") || 
-        s.startsWith("s3:") || 
+    if(s.startsWith("s3:")) {
+      if (I[Value.S3] == null) throw new H2OIllegalArgumentException("S3 support is not configured");
+      I[Value.S3].importFiles(path, files, keys, fails, dels);
+      return;
+    }
+    if( s.startsWith("hdfs:") ||
         s.startsWith("s3n:") || 
         s.startsWith("s3a:") || 
         s.startsWith("maprfs:")) {
-      if (I[Value.HDFS] == null) throw new H2OIllegalArgumentException("HDFS, S3, S3N, and S3A support is not configured");
+      if (I[Value.HDFS] == null) throw new H2OIllegalArgumentException("HDFS, S3N, and S3A support is not configured");
       I[Value.HDFS].importFiles(path, files, keys, fails, dels);
       return;
     }
