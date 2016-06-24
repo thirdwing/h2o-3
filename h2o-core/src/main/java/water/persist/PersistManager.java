@@ -13,6 +13,7 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -198,7 +199,7 @@ public class PersistManager {
    * @param limit Max number of entries to return
    * @return List of matches
    */
-  public ArrayList<String> calcTypeaheadMatches(String filter, int limit) {
+  public List<String> calcTypeaheadMatches(String filter, int limit) {
     String s = filter.toLowerCase();
     if (s.startsWith("http:") || s.startsWith("https:")) {
       if (httpUrlExists(filter)) {
@@ -209,8 +210,9 @@ public class PersistManager {
       else {
         return new ArrayList<>();
       }
-    }
-    else if (s.startsWith("hdfs:") || s.startsWith("s3:") || s.startsWith("s3n:") ||
+    } else if(s.startsWith("s3://")) {
+      return I[Value.S3].calcTypeaheadMatches(filter, limit);
+    } else if (s.startsWith("hdfs:") || s.startsWith("s3:") || s.startsWith("s3n:") ||
              s.startsWith("s3a:") || s.startsWith("maprfs:")) {
       if (I[Value.HDFS] == null) {
         throw new H2OIllegalArgumentException("HDFS, S3, S3N, and S3A support is not configured");

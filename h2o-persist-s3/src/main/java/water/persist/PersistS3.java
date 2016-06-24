@@ -3,10 +3,7 @@ package water.persist;
 import java.io.*;
 import java.net.SocketTimeoutException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Properties;
-import java.util.TreeMap;
+import java.util.*;
 
 import water.*;
 import water.fvec.FileVec;
@@ -121,11 +118,15 @@ public final class PersistS3 extends Persist {
   }
 
 
-  public void processListing(ObjectListing listing, ArrayList<String> succ, ArrayList<String> fail){
+  public void processListing(ObjectListing listing, ArrayList<String> succ, ArrayList<String> fail, boolean doImport){
     for( S3ObjectSummary obj : listing.getObjectSummaries() ) {
       try {
-        Key k = loadKey(obj);
-        succ.add(k.toString());
+        if (doImport) {
+          Key k = loadKey(obj);
+          succ.add(k.toString());
+        } else {
+          succ.add(obj.getKey());
+        }
       } catch( IOException e ) {
         fail.add(obj.getKey());
       }
@@ -137,10 +138,10 @@ public final class PersistS3 extends Persist {
     AmazonS3 s3 = getClient();
     String [] parts = decodePath(path);
     ObjectListing currentList = s3.listObjects(parts[0],parts[1]);
-    processListing(currentList, files, fails);
+    processListing(currentList, files, fails,true);
     while(currentList.isTruncated()){
       currentList = s3.listNextBatchOfObjects(currentList);
-      processListing(currentList, files, fails);
+      processListing(currentList, files, fails,true);
     }
     keys.addAll(files);
     // write barrier was here : DKV.write_barrier();
@@ -253,6 +254,7 @@ public final class PersistS3 extends Persist {
     assert s.startsWith(KEY_PREFIX) && s.indexOf('/') >= 0 : "Attempting to decode non s3 key: " + s;
     s = s.substring(KEY_PREFIX_LEN);
     int dlm = s.indexOf('/');
+    if(dlm < 0) return new String[]{s,""};
     String bucket = s.substring(0, dlm);
     String key = s.substring(dlm + 1);
     return new String[] { bucket, key };
@@ -326,8 +328,44 @@ public final class PersistS3 extends Persist {
   @Override
   public void cleanUp() { throw H2O.unimpl(); /** user-mode swapping not implemented */}
 
+  private String [] _bucketCache = null;
+  long _bucketCacheUpdated = 0;
+
   @Override
-  public ArrayList<String> calcTypeaheadMatches(String filter, int limit) {
-    return null;
+  public List<String> calcTypeaheadMatches(String filter, int limit) {
+    ArrayList<String> res = new ArrayList<>();
+    String [] parts = decodePath(filter);
+    AmazonS3 s3 = getClient();
+    if(!parts[1].isEmpty() || s3.doesBucketExist(parts[0])) { // bucket and key prefix
+      ObjectListing currentList = s3.listObjects(parts[0],parts[1]);
+
+      processListing(currentList, res, null, false);
+      while(currentList.isTruncated()){
+        currentList = s3.listNextBatchOfObjects(currentList);
+        processListing(currentList, res, null, false);
+      }
+      Collections.sort(res);
+      for(int i = 0; i < res.size(); ++i)
+        res.set(i,"s3://" + parts[0] + "/" + res.get(i));
+
+    } else { // no key, only bucket prefix
+      // check if we have a bucket name
+      if (System.currentTimeMillis() > _bucketCacheUpdated + 60 * 1000) {
+        List<Bucket> l = getClient().listBuckets();
+        _bucketCache = new String[l.size()];
+        int i = 0;
+        for (Bucket b : l) _bucketCache[i++] = b.getName();
+        Arrays.sort(_bucketCache);
+        _bucketCacheUpdated = System.currentTimeMillis();
+      }
+      filter = filter.substring("s3://".length());
+      int i = Arrays.binarySearch(_bucketCache, filter);
+      if (i <= 0) i = -i - 1;
+      while (_bucketCache[i].startsWith(filter) && res.size() < limit)
+        res.add("s3://" +_bucketCache[i++]);
+    }
+    if(limit > 0 && res.size() > limit)
+      return res.subList(0,limit);
+    return res;
   }
 }
