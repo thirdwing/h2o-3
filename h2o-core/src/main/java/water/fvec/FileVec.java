@@ -59,7 +59,6 @@ public abstract class FileVec extends ByteVec {
       DKV.put(fr._key, fr, fs);
     }
     fs.blockForPending();
-    Log.info("Dataset " + fr._key + " resized to " + fr.anyVec().nChunks() + " chunks");
     return _chunkSize;
   }
 
