@@ -118,7 +118,7 @@ public final class PersistS3 extends Persist {
   }
 
 
-  public void processListing(ObjectListing listing, ArrayList<String> succ, ArrayList<String> fail, boolean doImport){
+  private static void processListing(ObjectListing listing, ArrayList<String> succ, ArrayList<String> fail, boolean doImport){
     for( S3ObjectSummary obj : listing.getObjectSummaries() ) {
       try {
         if (doImport) {
@@ -254,7 +254,7 @@ public final class PersistS3 extends Persist {
     assert s.startsWith(KEY_PREFIX) && s.indexOf('/') >= 0 : "Attempting to decode non s3 key: " + s;
     s = s.substring(KEY_PREFIX_LEN);
     int dlm = s.indexOf('/');
-    if(dlm < 0) return new String[]{s,""};
+    if(dlm < 0) return new String[]{s,null};
     String bucket = s.substring(0, dlm);
     String key = s.substring(dlm + 1);
     return new String[] { bucket, key };
@@ -328,44 +328,91 @@ public final class PersistS3 extends Persist {
   @Override
   public void cleanUp() { throw H2O.unimpl(); /** user-mode swapping not implemented */}
 
-  private String [] _bucketCache = null;
   long _bucketCacheUpdated = 0;
 
-  @Override
-  public List<String> calcTypeaheadMatches(String filter, int limit) {
-    ArrayList<String> res = new ArrayList<>();
-    String [] parts = decodePath(filter);
-    AmazonS3 s3 = getClient();
-    if(!parts[1].isEmpty() || s3.doesBucketExist(parts[0])) { // bucket and key prefix
-      ObjectListing currentList = s3.listObjects(parts[0],parts[1]);
 
+    private void updateCache(){
+
+  }
+
+  private static class Cache {
+    long _lastUpdated = 0;
+    long _timeoutMillis = 5*60*1000;
+    String [] _cache = new String[0];
+
+    public boolean containsKey(String k) { return Arrays.binarySearch(_cache,k) >= 0;}
+    protected String [] update(){
+      List<Bucket> l = getClient().listBuckets();
+      String [] cache = new String[l.size()];
+      int i = 0;
+      for (Bucket b : l) cache[i++] = b.getName();
+      Arrays.sort(cache);
+      return _cache = cache;
+    }
+
+
+    protected String wrapKey(String s) {return "s3://" + s;}
+
+    public ArrayList<String> fetch(String filter, int limit) {
+      String [] cache = _cache;
+      if(System.currentTimeMillis() > _lastUpdated + _timeoutMillis) {
+        cache = update();
+        _lastUpdated = System.currentTimeMillis();
+      }
+      ArrayList<String> res = new ArrayList<>();
+      int i = Arrays.binarySearch(cache, filter);
+      if (i <= 0) i = -i - 1;
+      while (cache[i].startsWith(filter) && (limit < 0 || res.size() < limit))
+        res.add(wrapKey(cache[i++]));
+      return res;
+    }
+  }
+
+  private static class KeyCache extends Cache {
+
+    private final String _keyPrefix;
+    private final String _bucket;
+    public KeyCache(String bucket){
+      _bucket = bucket;
+      _keyPrefix = super.wrapKey(bucket) + "/";
+    }
+
+    @Override
+    protected String [] update(){
+      AmazonS3 s3 = getClient();
+      ObjectListing currentList = s3.listObjects(_bucket,"");
+      ArrayList<String> res = new ArrayList<>();
       processListing(currentList, res, null, false);
       while(currentList.isTruncated()){
         currentList = s3.listNextBatchOfObjects(currentList);
         processListing(currentList, res, null, false);
       }
       Collections.sort(res);
-      for(int i = 0; i < res.size(); ++i)
-        res.set(i,"s3://" + parts[0] + "/" + res.get(i));
-
-    } else { // no key, only bucket prefix
-      // check if we have a bucket name
-      if (System.currentTimeMillis() > _bucketCacheUpdated + 60 * 1000) {
-        List<Bucket> l = getClient().listBuckets();
-        _bucketCache = new String[l.size()];
-        int i = 0;
-        for (Bucket b : l) _bucketCache[i++] = b.getName();
-        Arrays.sort(_bucketCache);
-        _bucketCacheUpdated = System.currentTimeMillis();
-      }
-      filter = filter.substring("s3://".length());
-      int i = Arrays.binarySearch(_bucketCache, filter);
-      if (i <= 0) i = -i - 1;
-      while (_bucketCache[i].startsWith(filter) && res.size() < limit)
-        res.add("s3://" +_bucketCache[i++]);
+      return _cache = res.toArray(new String[res.size()]);
     }
-    if(limit > 0 && res.size() > limit)
-      return res.subList(0,limit);
-    return res;
+    @Override
+    protected String wrapKey(String s) {
+      String x = _keyPrefix + s;
+      return _keyPrefix + s;
+    }
+  }
+
+
+
+  Cache _bucketCache = new Cache();
+  HashMap<String,KeyCache> _keyCaches = new HashMap<>();
+  @Override
+  public List<String> calcTypeaheadMatches(String filter, int limit) {
+    String [] parts = decodePath(filter);
+    if(parts[1] != null) { // bucket and key prefix
+      if(_keyCaches.get(parts[0]) == null) {
+        if(!getClient().doesBucketExist(parts[0]))
+          return new ArrayList<>();
+        _keyCaches.put(parts[0], new KeyCache(parts[0]));
+      }
+      return _keyCaches.get(parts[0]).fetch(parts[1],limit);
+    } else { // no key, only bucket prefix
+      return _bucketCache.fetch(parts[0],limit);
+    }
   }
 }
