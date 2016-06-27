@@ -168,7 +168,9 @@ public class PersistManager {
   public final Key anyURIToKey(URI uri) throws IOException {
     Key ikey = null;
     String scheme = uri.getScheme();
-    if ("hdfs".equals(scheme)) {
+    if("s3".equals(scheme)) {
+      ikey = I[Value.S3].uriToKey(uri);
+    } else if ("hdfs".equals(scheme)) {
       ikey = I[Value.HDFS].uriToKey(uri);
     } else if ("s3".equals(scheme) || "s3n".equals(scheme) || "s3a".equals(scheme)) {
       ikey = I[Value.HDFS].uriToKey(uri);

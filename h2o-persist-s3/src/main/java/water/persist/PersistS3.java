@@ -159,7 +159,7 @@ public final class PersistS3 extends Persist {
     Key k = v._key;
     long skip = 0;
     // Skip offset based on chunk number
-    if(k._kb[0] == Key.VEC)
+    if(k._kb[0] == Key.CHK)
       skip = FileVec.chunkOffset(k); // The offset
     // Too complicate matters, S3 likes to reset connections when H2O hits it
     // too hard.  We "fix" this by just trying again, assuming we're getting
@@ -327,13 +327,6 @@ public final class PersistS3 extends Persist {
 
   @Override
   public void cleanUp() { throw H2O.unimpl(); /** user-mode swapping not implemented */}
-
-  long _bucketCacheUpdated = 0;
-
-
-    private void updateCache(){
-
-  }
 
   private static class Cache {
     long _lastUpdated = 0;
