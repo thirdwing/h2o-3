@@ -47,7 +47,11 @@ public class SecurityManager {
 
     SecurityManager() {
         try {
-            if (null != H2O.ARGS.ssl_config) {
+            if (null == H2O.ARGS.ssl_config) {
+                H2O.ARGS.ssl_config = "ssl.properties";
+            }
+
+            if (null != H2O.ARGS.ssl_config && !H2O.ARGS.ga_opt_out) {
                 this.sslSocketChannelFactory = new SSLSocketChannelFactory();
                 this.securityEnabled = true;
             }
