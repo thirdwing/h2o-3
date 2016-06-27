@@ -96,7 +96,7 @@ public class DTree extends Iced {
   // Abstract node flavor
   public static abstract class Node extends Iced {
     transient protected DTree _tree;    // Make transient, lest we clone the whole tree
-    final public int _pid;    // Parent node id, root has no parent and uses -1
+    final public int _pid;    // Parent node id, root has no parent and uses NO_PARENT
     final protected int _nid;           // My node-ID, 0 is root
     Node( DTree tree, int pid, int nid ) {
       _tree = tree;
@@ -111,7 +111,7 @@ public class DTree extends Iced {
 
     // Recursively print the decision-line from tree root to this child.
     StringBuilder printLine(StringBuilder sb ) {
-      if( _pid==-1 ) return sb.append("[root]");
+      if( _pid== NO_PARENT) return sb.append("[root]");
       DecidedNode parent = _tree.decided(_pid);
       parent.printLine(sb).append(" to ");
       return parent.printChild(sb,_nid);
@@ -359,15 +359,15 @@ public class DTree extends Iced {
       return Arrays.copyOfRange(cols, len, choices);
     }
 
-    // Make the parent of this Node use a -1 NID to prevent the split that this
+    // Make the parent of this Node use UNINTIALIZED NIDs for its children to prevent the split that this
     // node otherwise induces.  Happens if we find out too-late that we have a
     // perfect prediction here, and we want to turn into a leaf.
     public void do_not_split( ) {
-      if( _pid == -1 ) return; // skip root
+      if( _pid == NO_PARENT) return; // skip root
       DecidedNode dn = _tree.decided(_pid);
       for( int i=0; i<dn._nids.length; i++ )
         if( dn._nids[i]==_nid )
-          { dn._nids[i] = -1; return; }
+          { dn._nids[i] = ScoreBuildHistogram.UNINITIALIZED; return; }
       throw H2O.fail();
     }
 
@@ -517,7 +517,7 @@ public class DTree extends Iced {
         // which might be because all predictor columns are now constant, or
         // because all responses are now constant.
         _splat = Float.NaN;
-        Arrays.fill(_nids,-1);
+        Arrays.fill(_nids,ScoreBuildHistogram.UNINITIALIZED);
         return;
       }
       _splat = _split._nasplit != DHistogram.NASplitDir.NAvsREST && (_split._equal == 0 || _split._equal == 1) ? _split.splat(hs) : -1f; // Split-at value (-1 for group-wise splits)
@@ -526,7 +526,7 @@ public class DTree extends Iced {
         DHistogram nhists[] = _split.nextLevelHistos(hs, way,_splat, _tree._parms); //maintains the full range for NAvsREST
         assert nhists==null || nhists.length==_tree._ncols;
         // Assign a new (yet undecided) node to each child, and connect this (the parent) decided node and the newly made histograms to it
-        _nids[way] = nhists == null ? -1 : makeUndecidedNode(nhists)._nid;
+        _nids[way] = nhists == null ? ScoreBuildHistogram.UNINITIALIZED : makeUndecidedNode(nhists)._nid;
       }
     }
 
@@ -565,7 +565,8 @@ public class DTree extends Iced {
       sb.append("DecidedNode:\n");
       sb.append("_nid: " + _nid);
       sb.append("_nids (children): " + Arrays.toString(_nids));
-      sb.append("_split:" + _split.toString());
+      if (_split!=null)
+        sb.append("_split:" + _split.toString());
       sb.append("_splat:" + _splat);
       if( _split == null ) {
         sb.append(" col = -1 ");
@@ -713,7 +714,8 @@ public class DTree extends Iced {
     public final double pred() { return _pred; }
   }
 
-  static public boolean isRootNode(Node n)   { return n._pid == -1; }
+  final static public int NO_PARENT = -1;
+  static public boolean isRootNode(Node n)   { return n._pid == NO_PARENT; }
 
   // Build a compressed-tree struct
   public CompressedTree compress(int tid, int cls) {
