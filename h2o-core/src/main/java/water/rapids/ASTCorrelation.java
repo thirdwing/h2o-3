@@ -172,9 +172,9 @@ class ASTCorrelation extends ASTPrim {
                 final Chunk cx = cs[x+1];
                 final double xmean = _xmeans[x];
                 for( int row=0; row<len; row++ ) {
-                    varx += ((cx.atd(row) - xmean) * (cx.atd(row) - xmean))/(len-1); //Compute variance for x
-                    vary += ((cy.atd(row) - _ymean) * (cy.atd(row) - _ymean))/(len-1); //Compute variance for y
-                    sum += ((cx.atd(row) - xmean) * (cy.atd(row) - _ymean))/(len-1); //Compute sum of square
+                    varx += ((cx.atd(row) - xmean) * (cx.atd(row) - xmean))/(cx._len-1); //Compute variance for x
+                    vary += ((cy.atd(row) - _ymean) * (cy.atd(row) - _ymean))/(cy._len-1); //Compute variance for y
+                    sum += ((cx.atd(row) - xmean) * (cy.atd(row) - _ymean))/(len - 1); //Compute sum of square
                 }
                 _cors[x] = sum/(Math.sqrt(varx) * Math.sqrt(vary)); //Pearsons correlation coefficient
             }
