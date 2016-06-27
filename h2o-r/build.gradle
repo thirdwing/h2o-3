@@ -149,6 +149,7 @@ task buildPKG(type: Exec) { commandLine getOsSpecificCommandLine(['R', 'CMD', 'b
 task cpToR << {
     new File([T, "R", "src", "contrib"].join(File.separator)).mkdirs()
     copyFile([T, "README.md"], [T, "R", "README.md"])
+    copyFile([T, "ssl.properties"], [T, "R", "src", "contrib", "ssl.properties"])
     copyFile([T, H2O_R_SOURCE_FILE], [T, "R", "src", "contrib", H2O_R_SOURCE_FILE])
 }
 task publishPKG(type: Exec) { commandLine getOsSpecificCommandLine(['Rscript', "-e", "tools::write_PACKAGES('R/src/contrib')"]) }
