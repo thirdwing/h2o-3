@@ -361,8 +361,8 @@ public final class PersistS3 extends Persist {
       }
       ArrayList<String> res = new ArrayList<>();
       int i = Arrays.binarySearch(cache, filter);
-      if (i <= 0) i = -i - 1;
-      while (cache[i].startsWith(filter) && (limit < 0 || res.size() < limit))
+      if (i < 0) i = -i - 1;
+      while (i < cache.length && cache[i].startsWith(filter) && (limit < 0 || res.size() < limit))
         res.add(wrapKey(cache[i++]));
       return res;
     }
