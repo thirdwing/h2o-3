@@ -2,7 +2,7 @@ package hex.deeplearning;
 
 import water.Key;
 import water.MRTask;
-import water.fvec.Frame;
+import water.fvec.*;
 
 /**
  * DRemoteTask-based Deep Learning.
@@ -47,25 +47,43 @@ public class DeepLearningTask2 extends MRTask<DeepLearningTask2> {
   @Override
   public void setupLocal() {
     super.setupLocal();
-    _res = new DeepLearningTask(_jobKey, _sharedmodel, _sync_fraction, _iteration, this);
-    addToPendingCount(1);
-    _res.dfork(null, _fr, true /*run_local*/);
+    Vec response = _sharedmodel._train.vec(_sharedmodel._train.numCols() - 1);
+
+    float[] data = new float[(int)_sharedmodel._train.numRows() * (_sharedmodel._train.numCols() - 1)];
+    //System.out.println("data " + data.length);
+    for (int i = 0; i < _sharedmodel._train.numCols() - 1; i++) {
+      for (int j = 0; j < _sharedmodel._train.numRows(); j++) {
+        data[i * (int)_sharedmodel._train.numRows() + j] = (float)_sharedmodel._train.vec(i).at(j);
+      }
+    }
+
+    //for (int i = 0; i < _sharedmodel._train.numRows(); i++) {
+    //  for (int j = 0; j < _sharedmodel._train.numCols() - 1; j++) {
+    //    data[i * _sharedmodel._train.lastVec().cardinality() + j] = (float)_sharedmodel._train.vec(j).at(i);
+    //  }
+    //}
+
+    float[] label = new float[(int)response.length()];
+    for (int i = 0; i < label.length; i++) {
+      label[i] = (float) response.at(i);
+    }
+
+    int[] layerSize = {10};
+    _sharedmodel.mlpGPU.setLayers(layerSize, layerSize.length, _sharedmodel._train.lastVec().cardinality());
+    String[] act = {"tanh"};
+    _sharedmodel.mlpGPU.setAct(act);
+    _sharedmodel.mlpGPU.setData(data, (int)_sharedmodel._train.numRows(), _sharedmodel._train.numCols() - 1);
+    _sharedmodel.mlpGPU.setLabel(label, label.length);
+    _sharedmodel.mlpGPU.build_mlp();
+    _sharedmodel.mlpGPU.train();
+
   }
 
-  /**
-   * Reduce between worker nodes, with network traffic (if greater than 1 nodes)
-   * After all reduce()'s are done, postGlobal() will be called
-   * @param drt task to reduce
-   */
   @Override
-  public void reduce(DeepLearningTask2 drt) {
-    if (_res == null) _res = drt._res;
-    else {
-      _res._chunk_node_count += drt._res._chunk_node_count;
-      _res.model_info().add(drt._res.model_info()); //add models, but don't average yet
-    }
-    assert(_res.model_info().get_params()._replicate_training_data);
-  }
+  public void map(Key key) {}
+
+  @Override
+  public void reduce(DeepLearningTask2 drt) {}
 
   /**
    * Finish up the work after all nodes have reduced their models via the above reduce() method.
@@ -74,16 +92,7 @@ public class DeepLearningTask2 extends MRTask<DeepLearningTask2> {
    */
   @Override
   protected void postGlobal() {
-    assert(_res.model_info().get_params()._replicate_training_data);
     super.postGlobal();
-    // model averaging (DeepLearningTask only computed the per-node models, each on all the data)
-    _res.model_info().div(_res._chunk_node_count);
-    _res.model_info().add_processed_global(_res.model_info().get_processed_local()); //switch from local counters to global counters
-    _res.model_info().set_processed_local(0l);
-    DeepLearningModelInfo nodeAverageModel = _res.model_info();
-    if (nodeAverageModel.get_params()._elastic_averaging)
-      _sharedmodel = DeepLearningModelInfo.timeAverage(nodeAverageModel);
-    else
-      _sharedmodel = nodeAverageModel;
+    _sharedmodel.add_processed_local(_sharedmodel._train.numRows());
   }
 }

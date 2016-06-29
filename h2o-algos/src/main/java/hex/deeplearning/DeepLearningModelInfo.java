@@ -12,12 +12,19 @@ import water.util.*;
 import java.util.Arrays;
 import java.util.Random;
 
+import water.gpu.MLPNative;
 
 /**
  * This class contains the state of the Deep Learning model
  * This will be shared: one per node
  */
 final public class DeepLearningModelInfo extends Iced {
+
+  static {
+    System.loadLibrary("mlp");
+  }
+
+  public transient MLPNative mlpGPU;
 
   public TwoDimTable summaryTable;
 
@@ -162,6 +169,7 @@ final public class DeepLearningModelInfo extends Iced {
    * @param valid User-specified validation data frame, prepared by AdaptTestTrain
    */
   public DeepLearningModelInfo(final DeepLearningParameters params, Key model_id, final DataInfo dinfo, int nClasses, Frame train, Frame valid) {
+    mlpGPU = new MLPNative();
     _classification = nClasses > 1;
     _train = train;
     _valid = valid;

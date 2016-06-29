@@ -22,6 +22,9 @@ import java.util.Arrays;
 import static hex.ModelMetrics.calcVarImp;
 import static hex.deeplearning.DeepLearning.makeDataInfo;
 import static water.H2O.technote;
+import static water.fvec.Vec.makeCon;
+import static water.util.VecUtils.*;
+
 
 /**
  * The Deep Learning model
@@ -301,6 +304,7 @@ public class DeepLearningModel extends Model<DeepLearningModel,DeepLearningModel
     // if multi-node and auto-tuning and at least 10 ms for communication (to avoid doing thins on multi-JVM on same node),
     // then adjust the auto-tuning parameter 'actual_train_samples_per_iteration' such that the targeted ratio of comm to comp is achieved
     // Note: actual communication time is estimated by the NetworkTest's collective test.
+    /*
     if (H2O.CLOUD.size() > 1 && get_params()._train_samples_per_iteration == -2 && iteration > 1) {
       Log.debug("Auto-tuning train_samples_per_iteration.");
       if (time_for_communication_us > 1e4) {
@@ -322,7 +326,7 @@ public class DeepLearningModel extends Model<DeepLearningModel,DeepLearningModel
       } else {
         Log.debug("Communication is faster than 10 ms. Not modifying train_samples_per_iteration: " + actual_train_samples_per_iteration);
       }
-    }
+    }*/
 
     keep_running = (epoch_counter < get_params()._epochs) && !stopped_early;
     final long sinceLastScore = now -_timeLastScoreStart;
@@ -369,8 +373,6 @@ public class DeepLearningModel extends Model<DeepLearningModel,DeepLearningModel
       } else {
         if (printme) Log.info("Scoring the model.");
         // compute errors
-        final String m = model_info().toString();
-        if (m.length() > 0) Log.info(m);
         final Frame trainPredict = score(fTrain);
         trainPredict.delete();
 
@@ -383,13 +385,13 @@ public class DeepLearningModel extends Model<DeepLearningModel,DeepLearningModel
           ModelMetricsBinomial mm = (ModelMetricsBinomial)(mm1);
           scoringInfo.training_AUC = mm._auc;
         }
-        if (fTrain.numRows() != training_rows) {
-          _output._training_metrics._description = "Metrics reported on temporary training frame with " + fTrain.numRows() + " samples";
-        } else if (fTrain._key != null && fTrain._key.toString().contains("chunks")){
-          _output._training_metrics._description = "Metrics reported on temporary (load-balanced) training frame";
-        } else {
-          _output._training_metrics._description = "Metrics reported on full training frame";
-        }
+//        if (fTrain.numRows() != training_rows) {
+//          _output._training_metrics._description = "Metrics reported on temporary training frame with " + fTrain.numRows() + " samples";
+//        } else if (fTrain._key != null && fTrain._key.toString().contains("chunks")){
+//          _output._training_metrics._description = "Metrics reported on temporary (load-balanced) training frame";
+//        } else {
+//          _output._training_metrics._description = "Metrics reported on full training frame";
+//        }
 
         if (fTest != null) {
           Frame validPred = score(fTest);
@@ -458,7 +460,7 @@ public class DeepLearningModel extends Model<DeepLearningModel,DeepLearningModel
       }
       _output._scoring_history = DeepLearningScoringInfo.createScoringHistoryTable(this.scoringInfo, (null != get_params()._valid), false, _output.getModelCategory(), _output.isAutoencoder());
       _output._variable_importances = calcVarImp(last_scored().variable_importances);
-      _output._model_summary = model_info.createSummaryTable();
+      //_output._model_summary = model_info.createSummaryTable();
 
       // always keep a copy of the best model so far (based on the following criterion)
       if (!finalScoring) {
@@ -533,7 +535,34 @@ public class DeepLearningModel extends Model<DeepLearningModel,DeepLearningModel
    */
   @Override protected Frame predictScoreImpl(Frame orig, Frame adaptedFr, String destination_key, Job j) {
     if (!get_params()._autoencoder) {
-      return super.predictScoreImpl(orig, adaptedFr, destination_key, j);
+      Vec actual = model_info._train.vec(model_info._train.numCols() - 1).toCategoricalVec();
+      float [] tmp = model_info.mlpGPU.pred();
+      int cat_num = model_info._train.lastVec().cardinality();
+      Vec pred = makeCon(0.0, orig.numRows(), true);
+      assert(pred.length() == actual.length());
+      for (int i = 0; i < pred.length(); i++) {
+        float max_p = tmp[i * cat_num];
+        int max_idx = 0;
+        for (int k = 0; k < cat_num; k++) {
+          if (tmp[i * cat_num + k] > max_p) {
+            max_p = tmp[i * cat_num + k];
+            max_idx = k;
+          }
+        }
+        pred.set(i, max_idx);
+      }
+
+      double [][] arr = new double[cat_num][cat_num];
+
+      for (int i = 0; i < actual.length(); i++) {
+        arr[(int)actual.at(i)][(int)pred.at(i)]++;
+      }
+
+      ConfusionMatrix cm = new ConfusionMatrix(arr, model_info._train.lastVec().domain());
+
+      System.out.println("ConfusionMatrix " + cm.table().toString());
+
+      return new Frame(pred);
     } else {
       // Reconstruction
       final int len = model_info().data_info().fullN();
