@@ -12,7 +12,7 @@ import water.util.*;
 import java.util.Arrays;
 import java.util.Random;
 
-import water.gpu.MLPNative;
+import water.gpu.ImageClassify;
 
 /**
  * This class contains the state of the Deep Learning model
@@ -21,10 +21,13 @@ import water.gpu.MLPNative;
 final public class DeepLearningModelInfo extends Iced {
 
   static {
-    System.loadLibrary("mlp");
+    System.loadLibrary("cudart");
+    System.loadLibrary("cublas");
+    System.loadLibrary("curand");
+    System.loadLibrary("Native");
   }
 
-  public transient MLPNative mlpGPU;
+  public transient ImageClassify _image_classify_gpu;
 
   public TwoDimTable summaryTable;
 
@@ -169,7 +172,8 @@ final public class DeepLearningModelInfo extends Iced {
    * @param valid User-specified validation data frame, prepared by AdaptTestTrain
    */
   public DeepLearningModelInfo(final DeepLearningParameters params, Key model_id, final DataInfo dinfo, int nClasses, Frame train, Frame valid) {
-    mlpGPU = new MLPNative();
+    _image_classify_gpu = new ImageClassify();
+    _image_classify_gpu.buildNet(10, 40);
     _classification = nClasses > 1;
     _train = train;
     _valid = valid;

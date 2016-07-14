@@ -621,7 +621,7 @@ abstract public class ModelBuilder<M extends Model<M,P,O>, P extends Model.Param
     return res;
   }
 
-  protected  boolean ignoreStringColumns(){return true;}
+  protected  boolean ignoreStringColumns(){return false;}
   protected  boolean ignoreConstColumns(){return _parms._ignore_const_cols;}
 
   /**

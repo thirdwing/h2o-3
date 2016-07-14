@@ -3,12 +3,25 @@ package hex.deeplearning;
 import water.Key;
 import water.MRTask;
 import water.fvec.*;
+import water.parser.BufferedString;
+import water.gpu.ImageIter;
+import water.util.Log;
+
+
+import java.io.IOException;
+import java.util.ArrayList;
 
 /**
  * DRemoteTask-based Deep Learning.
  * Every node has access to all the training data which leads to optimal CPU utilization and training accuracy IFF the data fits on every node.
  */
 public class DeepLearningTask2 extends MRTask<DeepLearningTask2> {
+  static {
+    System.loadLibrary("cudart");
+    System.loadLibrary("cublas");
+    System.loadLibrary("curand");
+    System.loadLibrary("Native");
+  }
   /**
    * Construct a DeepLearningTask2 where every node trains on the entire training dataset
    * @param jobKey Job ID
@@ -49,33 +62,36 @@ public class DeepLearningTask2 extends MRTask<DeepLearningTask2> {
     super.setupLocal();
     Vec response = _sharedmodel._train.vec(_sharedmodel._train.numCols() - 1);
 
-    float[] data = new float[(int)_sharedmodel._train.numRows() * (_sharedmodel._train.numCols() - 1)];
-    //System.out.println("data " + data.length);
+    ArrayList<String> img_lst = new ArrayList<>();
     for (int i = 0; i < _sharedmodel._train.numCols() - 1; i++) {
       for (int j = 0; j < _sharedmodel._train.numRows(); j++) {
-        data[i * (int)_sharedmodel._train.numRows() + j] = (float)_sharedmodel._train.vec(i).at(j);
+        BufferedString str = new BufferedString();
+        img_lst.add(_sharedmodel._train.vec(i).atStr(str, j).toString());
       }
     }
 
-    //for (int i = 0; i < _sharedmodel._train.numRows(); i++) {
-    //  for (int j = 0; j < _sharedmodel._train.numCols() - 1; j++) {
-    //    data[i * _sharedmodel._train.lastVec().cardinality() + j] = (float)_sharedmodel._train.vec(j).at(i);
-    //  }
-    //}
-
-    float[] label = new float[(int)response.length()];
-    for (int i = 0; i < label.length; i++) {
-      label[i] = (float) response.at(i);
+    ArrayList<Float> label_lst = new ArrayList<>();
+    for (int i = 0; i < response.length(); i++) {
+      label_lst.add((float)response.at(i));
     }
 
-    int[] layerSize = {10};
-    _sharedmodel.mlpGPU.setLayers(layerSize, layerSize.length, _sharedmodel._train.lastVec().cardinality());
-    String[] act = {"tanh"};
-    _sharedmodel.mlpGPU.setAct(act);
-    _sharedmodel.mlpGPU.setData(data, (int)_sharedmodel._train.numRows(), _sharedmodel._train.numCols() - 1);
-    _sharedmodel.mlpGPU.setLabel(label, label.length);
-    _sharedmodel.mlpGPU.build_mlp();
-    _sharedmodel.mlpGPU.train();
+    try {
+      int batch_size = 40;
+
+      ImageIter img_iter = new ImageIter(img_lst, label_lst, batch_size, "/tmp", 224, 224);
+      img_iter.Reset();
+      int iter = 0;
+      while(img_iter.Nest()){
+        float[] data = img_iter.getData();
+        float[] labels = img_iter.getLabel();
+        _sharedmodel._image_classify_gpu.train(data, labels, true);
+        Log.info("Training epoch: " + iter);
+        iter++;
+      }
+
+    }catch(IOException ie) {
+      ie.printStackTrace();
+    }
 
   }
 

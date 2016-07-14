@@ -823,13 +823,16 @@ public abstract class Model<M extends Model<M,P,O>, P extends Model.Parameters, 
   
   public Frame score(Frame fr, String destination_key, Job j) throws IllegalArgumentException {
     Frame adaptFr = new Frame(fr);
+
     boolean computeMetrics = (!isSupervised() || adaptFr.find(_output.responseName()) != -1);
     adaptTestForTrain(adaptFr,true, computeMetrics);   // Adapt
     Frame output = predictScoreImpl(fr, adaptFr, destination_key, j); // Predict & Score
     // Log modest confusion matrices
-    Vec predicted = output.vecs()[0]; // Modeled/predicted response
-    String mdomain[] = predicted.domain(); // Domain of predictions (union of test and train)
 
+    Vec label = fr.vec(fr.numCols() - 1).toCategoricalVec();
+    String mdomain[] = label.domain(); // Domain of predictions (union of test and train)
+
+    ModelMetrics mm = new ModelMetricsMultinomial.MakeMultinomialMetrics(output, fr.vec(fr.numCols() - 1), mdomain).get();
     // Output is in the model's domain, but needs to be mapped to the scored
     // dataset's domain.
 //    if(_output.isClassifier() && computeMetrics) {

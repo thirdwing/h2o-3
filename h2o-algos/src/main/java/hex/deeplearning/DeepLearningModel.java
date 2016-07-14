@@ -14,9 +14,13 @@ import water.fvec.Chunk;
 import water.fvec.Frame;
 import water.fvec.NewChunk;
 import water.fvec.Vec;
+import water.gpu.ImageIter;
+import water.parser.BufferedString;
 import water.util.*;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
 
 import static hex.ModelMetrics.calcVarImp;
@@ -536,31 +540,58 @@ public class DeepLearningModel extends Model<DeepLearningModel,DeepLearningModel
   @Override protected Frame predictScoreImpl(Frame orig, Frame adaptedFr, String destination_key, Job j) {
     if (!get_params()._autoencoder) {
       Vec actual = model_info._train.vec(model_info._train.numCols() - 1).toCategoricalVec();
-      float [] tmp = model_info.mlpGPU.pred();
-      int cat_num = model_info._train.lastVec().cardinality();
-      Vec pred = makeCon(0.0, orig.numRows(), true);
-      assert(pred.length() == actual.length());
-      for (int i = 0; i < pred.length(); i++) {
-        float max_p = tmp[i * cat_num];
-        int max_idx = 0;
-        for (int k = 0; k < cat_num; k++) {
-          if (tmp[i * cat_num + k] > max_p) {
-            max_p = tmp[i * cat_num + k];
-            max_idx = k;
-          }
+
+      ArrayList<String> img_lst = new ArrayList<>();
+      for (int i = 0; i < orig.numCols() - 1; i++) {
+        for (int k = 0; k < orig.numRows(); k++) {
+          BufferedString str = new BufferedString();
+          img_lst.add(orig.vec(i).atStr(str, k).toString());
         }
-        pred.set(i, max_idx);
       }
 
-      double [][] arr = new double[cat_num][cat_num];
+      Vec response = orig.vec(orig.numCols() - 1).toCategoricalVec();
 
-      for (int i = 0; i < actual.length(); i++) {
-        arr[(int)actual.at(i)][(int)pred.at(i)]++;
+      ArrayList<Float> label_lst = new ArrayList<>();
+      for (int i = 0; i < response.length(); i++) {
+        label_lst.add((float)response.at(i));
       }
 
-      ConfusionMatrix cm = new ConfusionMatrix(arr, model_info._train.lastVec().domain());
+      Vec[] pred = new Vec[response.domain().length];
 
-      System.out.println("ConfusionMatrix " + cm.table().toString());
+      for (int i = 0; i < pred.length; i++) {
+        pred[i] = makeCon(0.0, response.length(), true);
+      }
+      //Vec pred = makeCon(0.0, response.length(), true);
+      //assert(pred.length() == actual.length());
+      int start_index = 0, batch_size = 40;
+
+      try {
+        ImageIter img_iter = new ImageIter(img_lst, label_lst, batch_size, "/tmp", 224, 224);
+        img_iter.Reset();
+        int iter = 0;
+        while(img_iter.Nest()){
+          float[] data = img_iter.getData();
+          float[] labels = img_iter.getLabel();
+          float[] p = model_info._image_classify_gpu.train(data, labels, false);
+          if (start_index + batch_size > response.length()) {
+            start_index = (int)response.length() - batch_size;
+          }
+          for (int i = 0; i < batch_size; i++) {
+            for (int k = 0; k < response.domain().length; k++) {
+              pred[k].set(start_index, p[i * response.domain().length + k]);
+            }
+            start_index++;
+          }
+          Log.info("Scoring epoch: " + iter);
+          iter++;
+        }
+      } catch(IOException ie) {
+        ie.printStackTrace();
+      }
+
+      Frame tmp = new Frame(pred);
+
+      Log.info(tmp);
 
       return new Frame(pred);
     } else {
@@ -1584,7 +1615,7 @@ public class DeepLearningModel extends Model<DeepLearningModel,DeepLearningModel
      * The number of training dataset points to be used for scoring. Will be
      * randomly sampled. Use 0 for selecting the entire training dataset.
      */
-    public long _score_training_samples = 10000l;
+    public long _score_training_samples = 100000l;
   
     /**
      * The number of validation dataset points to be used for scoring. Can be
@@ -1660,6 +1691,8 @@ public class DeepLearningModel extends Model<DeepLearningModel,DeepLearningModel
      * convergence.
      */
     public boolean _single_node_mode = false;
+
+    public boolean _image = true;
   
     /**
      * Enable shuffling of training data (on each node). This option is
